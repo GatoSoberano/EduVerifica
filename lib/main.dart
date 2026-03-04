@@ -30,3 +30,4 @@ class EduVerificaApp extends StatelessWidget {
     );
   }
 }
+

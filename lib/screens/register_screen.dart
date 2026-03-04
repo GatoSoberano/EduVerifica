@@ -95,7 +95,7 @@ try {
     } else if (errorStr.contains('network') || errorStr.contains('Socket')) {
       return 'Error de conexión. Verifica tu internet';
     } else {
-      return 'Error al registrarse: ${errorStr.length > 100 ? errorStr.substring(0, 100) + '...' : errorStr}';
+      return 'Error al registrarse: ${errorStr.length > 100 ? '${errorStr.substring(0, 100)}...' : errorStr}';
     }
   }
 
