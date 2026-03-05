@@ -5,6 +5,7 @@ import 'simulator_screen.dart';
 import 'profile_screen.dart';
 import 'news_feed_screen.dart';
 import 'verify_screen.dart'; // <-- Este import debe estar
+import '../screens/verified_sources_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,9 +19,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget> _screens = [
     const EducationScreen(),
     const NewsFeedScreen(),
-    const GlossaryScreen(),
+    const GlossaryScreen(), //stas son las pantallas
     const SimulatorScreen(),
-    const VerifyScreen(), // <-- AQUÍ debe estar VerifyScreen
+    const VerifyScreen(), 
+    const VerifiedSourcesScreen(),
     const ProfileScreen(),
   ];
 
@@ -44,6 +46,10 @@ class _HomeScreenState extends State<HomeScreen> {
     BottomNavigationBarItem(
       icon: Icon(Icons.search_rounded),
       label: 'Verificar',
+    ),
+    BottomNavigationBarItem(
+      icon: Icon(Icons.book_online),
+      label: 'Fuentes',
     ),
     BottomNavigationBarItem(
       icon: Icon(Icons.person_rounded),
