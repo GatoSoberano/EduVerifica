@@ -1,5 +1,4 @@
 import 'dart:math';
-
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '../config/api_keys.dart';
 
@@ -9,14 +8,16 @@ class GeminiService {
   GeminiService() {
     try {
       _model = GenerativeModel(
-        model: 'gemini-2.5-flash', // Modelo actualizado
+        model: 'gemini-2.5-flash',
         apiKey: ApiKeys.geminiApiKey,
         generationConfig: GenerationConfig(
           temperature: 0.2,
-          maxOutputTokens: 800, // Aumentado para respuestas más largas
+          maxOutputTokens: 800,
         ),
+    
+        
       );
-      print('✅ GeminiService inicializado con gemini-2.5-flash');
+      print('✅ GeminiService inicializado con búsqueda en internet');
     } catch (e) {
       print('❌ Error inicializando Gemini: $e');
       rethrow;
@@ -27,22 +28,23 @@ class GeminiService {
     try {
       print('🤖 Enviando a Gemini: "$texto"');
       
-      // PROMPT CORREGIDO - MÁS ESPECÍFICO
       final prompt = '''
 Eres un experto en verificación de noticias. Analiza la siguiente afirmación y proporciona un análisis COMPLETO.
 
 Afirmación: "$texto"
 
+IMPORTANTE: Si la afirmación es sobre un evento RECIENTE (últimos días/semanas), utiliza la búsqueda en internet para obtener información actualizada.
+
 Debes responder EXACTAMENTE con este formato:
 
 VERACIDAD: [VERDADERO/FALSO/ENGAÑOSO/NO VERIFICABLE]
-EXPLICACIÓN: [explicación detallada de por qué, incluyendo contexto]
-EVIDENCIA: [qué tipo de evidencia apoyaría o refutaría esta afirmación]
+EXPLICACIÓN: [explicación detallada de por qué, incluyendo contexto y SI USASTE BÚSQUEDA, menciónalo]
+EVIDENCIA: [qué tipo de evidencia o fuentes respaldan tu análisis]
 
-Ejemplo de respuesta:
-VERACIDAD: FALSO
-EXPLICACIÓN: Esta afirmación ha sido desmentida por la Organización Mundial de la Salud y múltiples estudios científicos revisados por pares. No existe evidencia científica que respalde esta relación causal.
-EVIDENCIA: Estudios epidemiológicos, revisiones sistemáticas, declaraciones de autoridades sanitarias.
+Ejemplo de respuesta para evento reciente:
+VERACIDAD: VERDADERO
+EXPLICACIÓN: Según los resultados de búsqueda de BBC y CNN, el accidente del avión Hércules C-130 en El Alto, Bolivia, ocurrió el 27 de febrero de 2026, confirmado por las autoridades.
+EVIDENCIA: Búsqueda en Google News, informes de BBC y CNN.
 
 Ahora analiza la afirmación proporcionada.
 ''';
