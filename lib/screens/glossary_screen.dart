@@ -1,78 +1,86 @@
-// CORREGIR en glossary_screen.dart
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
+import '../utils/app_logger.dart';
 import 'glossary_detail.dart';
 
 class GlossaryScreen extends StatefulWidget {
   const GlossaryScreen({super.key});
+
   @override
   State<GlossaryScreen> createState() => _GlossaryScreenState();
 }
 
 class _GlossaryScreenState extends State<GlossaryScreen> {
-  final SupabaseService supa = SupabaseService();
-  List<Map<String, dynamic>> items = [];
-  bool loading = true;
-  String? error;
+  late final SupabaseService _supa;
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
+    _supa = SupabaseService();
     _loadGlossary();
   }
 
-  void _loadGlossary() async {
+  Future<void> _loadGlossary() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final List<Map<String, dynamic>> glossaryData = await supa.fetchGlossary();
+      final data = await _supa.fetchGlossary();
       setState(() {
-        items = glossaryData;
-        loading = false;
+        _items = data;
+        _loading = false;
       });
     } catch (e) {
+      AppLogger.e('Error al cargar glosario', error: e);
       setState(() {
-        error = 'Error al cargar glosario: $e';
-        loading = false;
+        _error = 'Error al cargar el glosario. Intenta de nuevo.';
+        _loading = false;
       });
     }
   }
 
-  String _truncateDefinition(String? definition) {
-    if (definition == null) return '';
-    return definition.length > 80 ? '${definition.substring(0, 80)}...' : definition;
+  String _truncate(String? text, {int max = 80}) {
+    if (text == null || text.isEmpty) return '';
+    return text.length > max ? '${text.substring(0, max)}...' : text;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
+    if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    
-    if (error != null) {
+
+    if (_error != null) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(error!),
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
-            ElevatedButton(
+            Text(_error!, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
               onPressed: _loadGlossary,
-              child: const Text('Reintentar'),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar'),
             ),
           ],
         ),
       );
     }
 
-    if (items.isEmpty) {
-      return const Center(
-        child: Text('No hay términos en el glosario.'),
-      );
+    if (_items.isEmpty) {
+      return const Center(child: Text('No hay términos en el glosario.'));
     }
 
     return ListView.builder(
-      itemCount: items.length,
+      itemCount: _items.length,
       itemBuilder: (context, index) {
-        final item = items[index];
+        final item = _items[index];
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: ListTile(
@@ -80,12 +88,11 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
               item['term'] ?? 'Sin término',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: Text(_truncateDefinition(item['definition'])),
+            subtitle: Text(_truncate(item['definition'])),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => GlossaryDetail(item: item),
-              ),
+              MaterialPageRoute(builder: (_) => GlossaryDetail(item: item)),
             ),
           ),
         );

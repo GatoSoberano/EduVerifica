@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/gemini_service.dart';
 import '../services/fact_check_service.dart';
+import '../utils/app_logger.dart';
 
 class VerifyScreen extends StatefulWidget {
   const VerifyScreen({super.key});
@@ -11,61 +12,74 @@ class VerifyScreen extends StatefulWidget {
 }
 
 class _VerifyScreenState extends State<VerifyScreen> {
-  final TextEditingController _controller = TextEditingController();
-  final FactCheckService _service = FactCheckService();
-  final GeminiService _geminiService = GeminiService();
-  
+  // ── Servicios (instanciados una sola vez) ──────────────────────────────────
+  late final TextEditingController _controller;
+  late final FactCheckService _factCheckService;
+  late final GeminiService _geminiService;
+
+  // ── Estado ────────────────────────────────────────────────────────────────
   String? _aiAnalysis;
-  bool _isAiLoading = false;
-  List<Map<String, dynamic>> _results = [];
   bool _isLoading = false;
+  List<Map<String, dynamic>> _results = [];
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+    _factCheckService = FactCheckService();
+    _geminiService = GeminiService();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose(); // Evitar memory leak
+    super.dispose();
+  }
+
+  // ── Lógica de verificación ────────────────────────────────────────────────
 
   Future<void> _verifyText() async {
     final text = _controller.text.trim();
-
     if (text.isEmpty) {
-      setState(() {
-        _errorMessage = 'Por favor ingresa un texto para verificar';
-      });
+      setState(() => _errorMessage = 'Por favor ingresa un texto para verificar');
       return;
     }
 
     setState(() {
       _isLoading = true;
-      _isAiLoading = true;
       _errorMessage = null;
       _results = [];
       _aiAnalysis = null;
     });
 
     try {
-      // 1. BUSCAR EN FACT CHECK API (verificaciones reales)
-      final results = await _service.searchClaims(
-        query: text,
-        languageCode: 'es',
-      );
-
-      // 2. ANALIZAR CON GEMINI (IA)
-      String aiResult = await _geminiService.analizarAfirmacion(text);
+      // Llamadas en PARALELO — reduce el tiempo de espera ~50%
+      AppLogger.i('Iniciando verificación paralela para: "$text"');
+      final responses = await Future.wait([
+        _factCheckService.searchClaims(query: text, languageCode: 'es'),
+        _geminiService.analizarAfirmacion(text),
+      ]);
 
       if (!mounted) return;
+
+      final results = responses[0] as List<Map<String, dynamic>>;
+      final aiResult = responses[1] as String;
 
       setState(() {
         _results = results;
         _aiAnalysis = aiResult;
         _isLoading = false;
-        _isAiLoading = false;
-
         if (results.isEmpty) {
-          _errorMessage = 'No hay verificaciones de organizaciones humanas, pero aquí tienes un análisis con IA:';
+          _errorMessage =
+              'No hay verificaciones de organizaciones humanas, pero aquí tienes un análisis con IA:';
         }
       });
     } catch (e) {
+      AppLogger.e('Error en verificación', error: e);
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _isAiLoading = false;
         _errorMessage = 'Error: ${e.toString().replaceAll('Exception: ', '')}';
       });
     }
@@ -78,328 +92,289 @@ class _VerifyScreenState extends State<VerifyScreen> {
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo abrir el enlace: $url')),
+        SnackBar(content: Text('No se pudo abrir: $url')),
       );
     }
   }
 
-  Color _getRatingColor(String rating) {
-    final ratingLower = rating.toLowerCase();
+  void _clearSearch() {
+    _controller.clear();
+    setState(() {
+      _results = [];
+      _errorMessage = null;
+      _aiAnalysis = null;
+    });
+  }
 
-    if (ratingLower.contains('verdadero') ||
-        ratingLower.contains('true') ||
-        ratingLower.contains('cierto') ||
-        ratingLower.contains('exacto') ||
-        ratingLower.contains('correcto') ||
-        ratingLower.contains('mayormente cierto')) {
+  // ── Helpers de UI ─────────────────────────────────────────────────────────
+
+  Color _getRatingColor(String rating) {
+    final r = rating.toLowerCase();
+    if (r.contains('verdadero') || r.contains('true') || r.contains('cierto') ||
+        r.contains('exacto') || r.contains('correcto') || r.contains('mayormente cierto')) {
       return Colors.green;
     }
-
-    if (ratingLower.contains('falso') ||
-        ratingLower.contains('false') ||
-        ratingLower.contains('mentira') ||
-        ratingLower.contains('incorrecto') ||
-        ratingLower.contains('inexacto')) {
+    if (r.contains('falso') || r.contains('false') || r.contains('mentira') ||
+        r.contains('incorrecto') || r.contains('inexacto')) {
       return Colors.red;
     }
-
-    if (ratingLower.contains('engañoso') ||
-        ratingLower.contains('misleading') ||
-        ratingLower.contains('clickbait') ||
-        ratingLower.contains('no hay evidencia')) {
+    if (r.contains('engañoso') || r.contains('misleading') ||
+        r.contains('clickbait') || r.contains('no hay evidencia')) {
       return Colors.orange;
     }
-
     return Colors.grey;
   }
 
   String _getRatingEmoji(String rating) {
-    final ratingLower = rating.toLowerCase();
-
-    if (ratingLower.contains('verdadero') ||
-        ratingLower.contains('true') ||
-        ratingLower.contains('cierto') ||
-        ratingLower.contains('exacto')) {
+    final r = rating.toLowerCase();
+    if (r.contains('verdadero') || r.contains('true') || r.contains('cierto') ||
+        r.contains('exacto')) {
       return '✅';
-    } else if (ratingLower.contains('falso') ||
-        ratingLower.contains('false') ||
-        ratingLower.contains('mentira')) {
-      return '❌';
-    } else if (ratingLower.contains('engañoso') ||
-        ratingLower.contains('misleading')) {
-      return '⚠️';
-    } else {
-      return '❓';
     }
+    if (r.contains('falso') || r.contains('false') || r.contains('mentira')) return '❌';
+    if (r.contains('engañoso') || r.contains('misleading')) return '⚠️';
+    return '❓';
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────
+
+  // NOTA: No se usa Scaffold aquí porque esta pantalla ya vive dentro
+  // del Scaffold de HomeScreen (via IndexedStack). Agregar otro Scaffold
+  // causaría AppBars y barras de estado duplicadas.
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Verificador Automático'),
-        backgroundColor: Theme.of(context).primaryColor,
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Encabezado explicativo
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.info, color: Colors.blue.shade700),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Verificador Automático',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue.shade700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Ingresa una frase o afirmación para ver si ya ha sido verificada por organizaciones de fact-checking.',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Campo de texto
-            TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                labelText: 'Texto a verificar',
-                hintText: 'Ej: "Las vacunas causan autismo"',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.clear),
-                  onPressed: () {
-                    _controller.clear();
-                    setState(() {
-                      _results = [];
-                      _errorMessage = null;
-                      _aiAnalysis = null;
-                    });
-                  },
-                ),
-              ),
-              maxLines: 3,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _verifyText(),
-            ),
-
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildInfoBanner(),
+          const SizedBox(height: 20),
+          _buildSearchField(),
+          const SizedBox(height: 16),
+          _buildVerifyButton(),
+          const SizedBox(height: 24),
+          if (_errorMessage != null) ...[_buildErrorBanner(), const SizedBox(height: 16)],
+          if (_results.isNotEmpty) ...[
+            _buildResultsHeader(),
             const SizedBox(height: 16),
-
-            // Botón de verificar
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _verifyText,
-                icon: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.verified),
-                label: Text(_isLoading ? 'Verificando...' : 'Verificar Afirmación'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-
+            ..._results.map((r) => _buildResultCard(r)),
             const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
+          ],
+          if (_isLoading) _buildLoadingAI(),
+          if (!_isLoading && _aiAnalysis != null) _buildAIAnalysis(),
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
 
-            // Mensaje de error si existe
-            if (_errorMessage != null) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error, color: Colors.red.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _errorMessage!,
-                        style: TextStyle(color: Colors.red.shade700),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // Resultados de Fact Check
-            if (_results.isNotEmpty) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Se encontraron ${_results.length} verificaciones',
+  Widget _buildInfoBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info, color: Colors.blue.shade700),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Verificador Automático',
                   style: TextStyle(
-                    color: Colors.green.shade700,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade700,
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              ..._results.map((result) => _buildResultCard(result)),
-              const SizedBox(height: 24),
-              const Divider(),
-              const SizedBox(height: 16),
-            ],
-
-            // ANÁLISIS DE IA (con scroll independiente)
-            if (_isAiLoading) ...[
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 8),
-                      Text('Analizando con IA...'),
-                    ],
-                  ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Ingresa una afirmación para verificarla con organizaciones de fact-checking y análisis de IA.',
+                  style: TextStyle(fontSize: 12),
                 ),
-              ),
-            ] else if (_aiAnalysis != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.purple.shade50, Colors.blue.shade50],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.purple.shade200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Colors.purple,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            'Análisis con IA',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                              color: Colors.purple,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                    // Contenido del análisis - CON SCROLL INDEPENDIENTE
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 300),
-                      child: SingleChildScrollView(
-                        child: Text(
-                          _aiAnalysis!,
-                          style: const TextStyle(fontSize: 14, height: 1.5),
-                        ),
-                      ),
-                    ),
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _controller,
+      decoration: InputDecoration(
+        labelText: 'Texto a verificar',
+        hintText: 'Ej: "Las vacunas causan autismo"',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: IconButton(
+          icon: const Icon(Icons.clear),
+          onPressed: _clearSearch,
+          tooltip: 'Limpiar',
+        ),
+      ),
+      maxLines: 3,
+      textInputAction: TextInputAction.search,
+      onSubmitted: (_) => _verifyText(),
+    );
+  }
 
-                    const SizedBox(height: 12),
+  Widget _buildVerifyButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton.icon(
+        onPressed: _isLoading ? null : _verifyText,
+        icon: _isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.verified),
+        label: Text(_isLoading ? 'Verificando...' : 'Verificar Afirmación'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Theme.of(context).primaryColor,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
 
-                    // Disclaimer
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(178), // 0.7 * 255 = 178
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.info_outline, size: 16, color: Colors.grey),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Este análisis es generado por IA y debe usarse como referencia, no como verificación definitiva.',
-                              style: TextStyle(fontSize: 11, color: Colors.grey),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+  Widget _buildErrorBanner() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error, color: Colors.red.shade700),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(_errorMessage!, style: TextStyle(color: Colors.red.shade700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultsHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        'Se encontraron ${_results.length} verificaciones',
+        style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  Widget _buildLoadingAI() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 12),
+            Text('Analizando con IA...'),
           ],
         ),
       ),
     );
   }
 
+  Widget _buildAIAnalysis() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.purple.shade50, Colors.blue.shade50],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.purple.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(color: Colors.purple, shape: BoxShape.circle),
+                child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Análisis con IA',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.purple,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 300),
+            child: SingleChildScrollView(
+              child: Text(_aiAnalysis!, style: const TextStyle(fontSize: 14, height: 1.5)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(178),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, size: 16, color: Colors.grey),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Este análisis es generado por IA y debe usarse como referencia, no como verificación definitiva.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildResultCard(Map<String, dynamic> result) {
     final review = result['review'];
-    final rating = review != null ? review['textualRating'] : 'Sin calificación';
+    final rating = review?['textualRating'] ?? 'Sin calificación';
     final ratingColor = _getRatingColor(rating);
     final ratingEmoji = _getRatingEmoji(rating);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 3,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -418,19 +393,12 @@ class _VerifyScreenState extends State<VerifyScreen> {
                 children: [
                   Text(
                     'Afirmación:',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade700,
-                    ),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     result['text'],
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -438,8 +406,8 @@ class _VerifyScreenState extends State<VerifyScreen> {
 
             const SizedBox(height: 12),
 
-            // Quién lo dijo (si existe)
-            if (result['claimant'].isNotEmpty && result['claimant'] != 'Desconocido') ...[
+            if (result['claimant'] != 'Desconocido' &&
+                (result['claimant'] as String).isNotEmpty) ...[
               Row(
                 children: [
                   Icon(Icons.person, size: 16, color: Colors.grey.shade600),
@@ -447,10 +415,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
                   Expanded(
                     child: Text(
                       'Dicho por: ${result['claimant']}',
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
                     ),
                   ),
                 ],
@@ -458,42 +423,33 @@ class _VerifyScreenState extends State<VerifyScreen> {
               const SizedBox(height: 6),
             ],
 
-            // Fecha (si existe)
-            if (result['claimDate'].isNotEmpty) ...[
+            if ((result['claimDate'] as String).isNotEmpty) ...[
               Row(
                 children: [
                   Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
                   const SizedBox(width: 6),
                   Text(
                     'Fecha: ${result['claimDate']}',
-                    style: TextStyle(
-                      color: Colors.grey.shade700,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
             ],
 
-            // Verificación (si existe)
             if (review != null) ...[
               const Divider(),
-
-              // Rating con color y emoji
+              // Rating
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: ratingColor.withAlpha(26), // 0.1 * 255 ≈ 26
+                  color: ratingColor.withAlpha(26),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: ratingColor.withAlpha(77)), // 0.3 * 255 ≈ 77
+                  border: Border.all(color: ratingColor.withAlpha(77)),
                 ),
                 child: Row(
                   children: [
-                    Text(
-                      ratingEmoji,
-                      style: const TextStyle(fontSize: 20),
-                    ),
+                    Text(ratingEmoji, style: const TextStyle(fontSize: 20)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -528,16 +484,12 @@ class _VerifyScreenState extends State<VerifyScreen> {
                         Expanded(
                           child: Text(
                             'Verificado por: ${review['publisherName']}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: Colors.blue.shade700,
-                            ),
+                            style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blue.shade700),
                           ),
                         ),
                       ],
                     ),
-
-                    if (review['reviewDate'].isNotEmpty) ...[
+                    if ((review['reviewDate'] as String).isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -545,24 +497,16 @@ class _VerifyScreenState extends State<VerifyScreen> {
                           const SizedBox(width: 6),
                           Text(
                             'Revisado: ${review['reviewDate']}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue.shade600,
-                            ),
+                            style: TextStyle(fontSize: 12, color: Colors.blue.shade600),
                           ),
                         ],
                       ),
                     ],
-
-                    if (review['title'].isNotEmpty) ...[
+                    if ((review['title'] as String).isNotEmpty) ...[
                       const SizedBox(height: 10),
                       Text(
                         review['title'],
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                          color: Colors.grey.shade800,
-                        ),
+                        style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.grey.shade800),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -573,8 +517,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
 
               const SizedBox(height: 12),
 
-              // Botón para leer más
-              if (review['url'].isNotEmpty)
+              if ((review['url'] as String).isNotEmpty)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -585,16 +528,11 @@ class _VerifyScreenState extends State<VerifyScreen> {
                       backgroundColor: Colors.white,
                       foregroundColor: Theme.of(context).primaryColor,
                       side: BorderSide(color: Theme.of(context).primaryColor),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
                 ),
-            ],
-
-            // Mensaje si no hay revisión
-            if (review == null) ...[
+            ] else ...[
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -607,7 +545,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'No hay información detallada de verificación disponible',
+                        'No hay información detallada de verificación disponible.',
                         style: TextStyle(color: Colors.grey),
                       ),
                     ),

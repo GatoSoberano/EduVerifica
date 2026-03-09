@@ -1,2 +1,15 @@
-const supabaseUrl = 'https://lspyupeetixgoshbdsxu.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzcHl1cGVldGl4Z29zaGJkc3h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1NDc5NzYsImV4cCI6MjA3ODEyMzk3Nn0.ac3tvZwZ72WqEtk_IC-Tp57zBIYgfr18iB54RWqvT1Q';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+/// Credenciales de Supabase desde variables de entorno.
+/// NUNCA escribas las claves directamente aquí.
+String get supabaseUrl {
+  final url = dotenv.env['SUPABASE_URL'] ?? '';
+  assert(url.isNotEmpty, 'SUPABASE_URL no está definida en .env');
+  return url;
+}
+
+String get supabaseAnonKey {
+  final key = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+  assert(key.isNotEmpty, 'SUPABASE_ANON_KEY no está definida en .env');
+  return key;
+}

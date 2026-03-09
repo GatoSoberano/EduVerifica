@@ -4,57 +4,38 @@ import 'glossary_screen.dart';
 import 'simulator_screen.dart';
 import 'profile_screen.dart';
 import 'news_feed_screen.dart';
-import 'verify_screen.dart'; // <-- Este import debe estar
-import '../screens/verified_sources_screen.dart';
+import 'verify_screen.dart';
+import 'verified_sources_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  
-  final List<Widget> _screens = [
-    const EducationScreen(),
-    const NewsFeedScreen(),
-    const GlossaryScreen(), //stas son las pantallas
-    const SimulatorScreen(),
-    const VerifyScreen(), 
-    const VerifiedSourcesScreen(),
-    const ProfileScreen(),
+
+  // Las pantallas NO deben incluir Scaffold propio; heredan el de HomeScreen.
+  static const List<Widget> _screens = [
+    EducationScreen(),
+    NewsFeedScreen(),
+    GlossaryScreen(),
+    SimulatorScreen(),
+    VerifyScreen(),
+    VerifiedSourcesScreen(),
+    ProfileScreen(),
   ];
 
-  final List<BottomNavigationBarItem> _navItems = const [
-    BottomNavigationBarItem(
-      icon: Icon(Icons.menu_book_rounded),
-      label: 'Aprende',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.feed_rounded),
-      label: 'Noticias',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.library_books_rounded),
-      label: 'Glosario',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.quiz_rounded),
-      label: 'Simulador',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.search_rounded),
-      label: 'Verificar',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.book_online),
-      label: 'Fuentes',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.person_rounded),
-      label: 'Perfil',
-    ),
+  static const List<BottomNavigationBarItem> _navItems = [
+    BottomNavigationBarItem(icon: Icon(Icons.menu_book_rounded), label: 'Aprende'),
+    BottomNavigationBarItem(icon: Icon(Icons.feed_rounded), label: 'Noticias'),
+    BottomNavigationBarItem(icon: Icon(Icons.library_books_rounded), label: 'Glosario'),
+    BottomNavigationBarItem(icon: Icon(Icons.quiz_rounded), label: 'Simulador'),
+    BottomNavigationBarItem(icon: Icon(Icons.search_rounded), label: 'Verificar'),
+    BottomNavigationBarItem(icon: Icon(Icons.book_online), label: 'Fuentes'),
+    BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Perfil'),
   ];
 
   @override
@@ -75,8 +56,9 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_none),
+            tooltip: 'Notificaciones',
             onPressed: () {
-              // TODO: Implementar notificaciones (puedes ignorar este warning)
+              // TODO: Implementar notificaciones
             },
           ),
         ],

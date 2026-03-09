@@ -1,54 +1,66 @@
-// CORREGIR en profile_screen.dart
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
+import 'login_screen.dart';
+import '../utils/app_logger.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final SupabaseService supa = SupabaseService();
-  Map<String, dynamic>? profile;
-  bool loading = true;
-  String? error;
+  late final SupabaseService _supa;
+  Map<String, dynamic>? _profile;
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
+    _supa = SupabaseService();
     _loadProfile();
   }
 
-  void _loadProfile() async {
+  Future<void> _loadProfile() async {
     try {
-      final user = supa.supabase.auth.currentUser;
+      final user = _supa.supabase.auth.currentUser;
       if (user == null) {
         setState(() {
-          error = 'Usuario no autenticado';
-          loading = false;
+          _error = 'Usuario no autenticado';
+          _loading = false;
         });
         return;
       }
 
-      final profileData = await supa.getProfile(user.id);
+      final profileData = await _supa.getProfile(user.id);
       setState(() {
-        profile = profileData;
-        loading = false;
+        _profile = profileData;
+        _loading = false;
       });
     } catch (e) {
+      AppLogger.e('Error al cargar perfil', error: e);
       setState(() {
-        error = 'Error al cargar perfil: $e';
-        loading = false;
+        _error = 'Error al cargar el perfil. Intenta de nuevo.';
+        _loading = false;
       });
     }
   }
 
   Future<void> _logout() async {
     try {
-      await supa.signOut();
-      Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+      await _supa.signOut();
+      if (!mounted) return;
+      // Navegar al login y limpiar toda la pila de navegación
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
     } catch (e) {
+      AppLogger.e('Error al cerrar sesión', error: e);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al cerrar sesión: $e')),
       );
@@ -57,54 +69,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
+    if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (error != null) {
+    if (_error != null) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(error!),
-            ElevatedButton(
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(_error!, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
               onPressed: _loadProfile,
-              child: const Text('Reintentar'),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar'),
             ),
           ],
         ),
       );
     }
 
+    final username = (_profile?['username'] ?? 'U').toString();
+    final initial = username.isNotEmpty ? username[0].toUpperCase() : 'U';
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
+          const SizedBox(height: 20),
           CircleAvatar(
             radius: 40,
             backgroundColor: Theme.of(context).primaryColor,
             child: Text(
-              (profile?['username'] ?? 'U').toString().substring(0, 1).toUpperCase(),
-              style: const TextStyle(color: Colors.white, fontSize: 24),
+              initial,
+              style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
             ),
           ),
           const SizedBox(height: 16),
           Text(
-            profile?['full_name'] ?? 'Usuario',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            _profile?['full_name'] ?? 'Usuario',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          Text('Nivel: ${profile?['level'] ?? 1}'),
+          Text(
+            _profile?['email'] ?? '',
+            style: TextStyle(color: Colors.grey[600]),
+          ),
           const SizedBox(height: 8),
-          Text(profile?['email'] ?? ''),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: _logout,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+          Chip(
+            label: Text('Nivel ${_profile?['level'] ?? 1}'),
+            backgroundColor: Theme.of(context).primaryColor.withAlpha(25),
+            labelStyle: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout),
+              label: const Text('Cerrar sesión'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
             ),
-            child: const Text('Cerrar sesión'),
           ),
         ],
       ),

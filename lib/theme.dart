@@ -1,4 +1,3 @@
-// CORREGIDO en theme.dart - USANDO CardThemeData
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -7,7 +6,9 @@ final appTheme = ThemeData(
     seedColor: const Color(0xFF1E88E5),
     brightness: Brightness.light,
   ),
-  useMaterial3: false, // Cambiar a false temporalmente
+  // Material 2 mantenido intencionalmente para consistencia visual de la app.
+  // Migrar a Material 3 requiere revisar todos los componentes de UI.
+  useMaterial3: false,
   textTheme: GoogleFonts.poppinsTextTheme(),
   scaffoldBackgroundColor: Colors.white,
   cardTheme: CardThemeData(

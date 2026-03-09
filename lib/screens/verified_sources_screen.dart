@@ -1,7 +1,7 @@
-// CORREGIDO en verified_sources_screen.dart
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
+import '../utils/app_logger.dart';
 
 class VerifiedSourcesScreen extends StatefulWidget {
   const VerifiedSourcesScreen({super.key});
@@ -11,90 +11,84 @@ class VerifiedSourcesScreen extends StatefulWidget {
 }
 
 class _VerifiedSourcesScreenState extends State<VerifiedSourcesScreen> {
-  final SupabaseService supa = SupabaseService();
-  List<Map<String, dynamic>> sources = [];
-  bool loading = true;
-  String? error;
+  late final SupabaseService _supa;
+  List<Map<String, dynamic>> _sources = [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
+    _supa = SupabaseService();
     _loadSources();
   }
 
-  void _loadSources() async {
+  Future<void> _loadSources() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final List<Map<String, dynamic>> sourcesData = await supa.fetchVerifiedSources();
+      final data = await _supa.fetchVerifiedSources();
       setState(() {
-        sources = sourcesData;
-        loading = false;
+        _sources = data;
+        _loading = false;
       });
     } catch (e) {
+      AppLogger.e('Error al cargar fuentes verificadas', error: e);
       setState(() {
-        error = 'Error al cargar fuentes: $e';
-        loading = false;
+        _error = 'Error al cargar fuentes. Intenta de nuevo.';
+        _loading = false;
       });
     }
   }
 
-  Widget _buildCredibilityStars(int score) {
-    return Row(
-      children: List.generate(5, (index) => Icon(
-        Icons.star,
-        size: 16,
-        color: index < score ? Colors.amber : Colors.grey[300],
-      )),
-    );
-  }
-
-  Widget _buildCategoryChip(String category) {
-    Color chipColor;
-    switch (category) {
-      case 'Verificación':
-        chipColor = Colors.green;
-      case 'Científico':
-        chipColor = Colors.blue;
-      case 'Oficial':
-        chipColor = Colors.orange;
-      case 'Internacional':
-        chipColor = Colors.purple;
-      default:
-        chipColor = Colors.grey;
-    }
-    
-    return Chip(
-      label: Text(category),
-      backgroundColor: chipColor.withAlpha((255 * 0.1).round()),
-      labelStyle: TextStyle(color: chipColor, fontSize: 12),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-  }
-
-  Future<void> _openSourceUrl(String url) async {
+  Future<void> _openUrl(String url) async {
     final Uri uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudo abrir: $url')),
       );
     }
   }
 
+  Color _getCategoryColor(String? category) {
+    switch (category) {
+      case 'Verificación': return Colors.green;
+      case 'Científico': return Colors.blue;
+      case 'Oficial': return Colors.orange;
+      case 'Internacional': return Colors.purple;
+      default: return Colors.grey;
+    }
+  }
+
+  IconData _getCategoryIcon(String? category) {
+    switch (category) {
+      case 'Verificación': return Icons.fact_check;
+      case 'Científico': return Icons.science;
+      case 'Oficial': return Icons.verified_user;
+      case 'Internacional': return Icons.public;
+      default: return Icons.source;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (loading) {
+    if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    
-    if (error != null) {
+
+    if (_error != null) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
-            Text(error!, textAlign: TextAlign.center),
+            Text(_error!, textAlign: TextAlign.center),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _loadSources,
@@ -108,15 +102,15 @@ class _VerifiedSourcesScreenState extends State<VerifiedSourcesScreen> {
 
     return Column(
       children: [
-        // Header informativo
+        // Banner informativo
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           margin: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blue[50],
+            color: Colors.blue.shade50,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.blue[100]!),
+            border: Border.all(color: Colors.blue.shade100),
           ),
           child: const Row(
             children: [
@@ -128,17 +122,11 @@ class _VerifiedSourcesScreenState extends State<VerifiedSourcesScreen> {
                   children: [
                     Text(
                       'Fuentes Verificadas',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
                     ),
                     Text(
-                      'Consulta estas fuentes confiables para verificar información',
-                      style: TextStyle(
-                        color: Colors.blue,
-                        fontSize: 12,
-                      ),
+                      'Consulta estas fuentes confiables para verificar información.',
+                      style: TextStyle(color: Colors.blue, fontSize: 12),
                     ),
                   ],
                 ),
@@ -147,13 +135,15 @@ class _VerifiedSourcesScreenState extends State<VerifiedSourcesScreen> {
           ),
         ),
 
-        // Lista de fuentes
+        // Lista
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: sources.length,
+            itemCount: _sources.length,
             itemBuilder: (context, index) {
-              final source = sources[index];
+              final source = _sources[index];
+              final color = _getCategoryColor(source['category']);
+
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 6),
                 child: ListTile(
@@ -161,13 +151,10 @@ class _VerifiedSourcesScreenState extends State<VerifiedSourcesScreen> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withAlpha((255 * 0.1).round()),
+                      color: color.withAlpha(25),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(
-                      _getSourceIcon(source['category']),
-                      color: Theme.of(context).primaryColor,
-                    ),
+                    child: Icon(_getCategoryIcon(source['category']), color: color),
                   ),
                   title: Text(
                     source['name'] ?? 'Sin nombre',
@@ -186,7 +173,13 @@ class _VerifiedSourcesScreenState extends State<VerifiedSourcesScreen> {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          _buildCategoryChip(source['category'] ?? 'General'),
+                          Chip(
+                            label: Text(source['category'] ?? 'General'),
+                            backgroundColor: color.withAlpha(25),
+                            labelStyle: TextStyle(color: color, fontSize: 11),
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: EdgeInsets.zero,
+                          ),
                           const Spacer(),
                           _buildCredibilityStars(source['credibility_score'] ?? 5),
                         ],
@@ -194,7 +187,7 @@ class _VerifiedSourcesScreenState extends State<VerifiedSourcesScreen> {
                     ],
                   ),
                   trailing: const Icon(Icons.open_in_new, size: 20, color: Colors.grey),
-                  onTap: () => _openSourceUrl(source['url']),
+                  onTap: () => _openUrl(source['url'] ?? ''),
                 ),
               );
             },
@@ -204,18 +197,12 @@ class _VerifiedSourcesScreenState extends State<VerifiedSourcesScreen> {
     );
   }
 
-  IconData _getSourceIcon(String category) {
-    switch (category) {
-      case 'Verificación':
-        return Icons.fact_check;
-      case 'Científico':
-        return Icons.science;
-      case 'Oficial':
-        return Icons.verified_user;
-      case 'Internacional':
-        return Icons.public;
-      default:
-        return Icons.source;
-    }
+  Widget _buildCredibilityStars(int score) {
+    return Row(
+      children: List.generate(
+        5,
+        (i) => Icon(Icons.star, size: 16, color: i < score ? Colors.amber : Colors.grey[300]),
+      ),
+    );
   }
 }
