@@ -46,3 +46,5 @@ app.*.map.json
 
 lib/config/api_keys.dart
 lib/services/supabasekey.dart
+# .gitignore
+.env
