@@ -43,9 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-
+lib/config/supabasekey.dart
 lib/config/api_keys.dart
 lib/services/supabasekey.dart
-lib/config/supabasekey.dart
+
 # .gitignore
 .env
